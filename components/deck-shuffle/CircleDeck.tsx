@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+// import {tarotCards} from "../../utils/cards";
+import { tarotCards } from "../../utils/cards";
 import { getTopArcEndpoints } from "../../utils/getTopArcYBounds";
 
 const ANGLE_DELTA = Math.PI / 10;
@@ -25,11 +27,23 @@ type Props = {
   setIsTitleShow: (show: boolean) => void;
 };
 
+type TarotCard = { id: number; name: string; image: any };
+type SelectedCard = {
+  key: string;
+  slotIdx: number;
+  animPos: Animated.ValueXY;
+  animScale: Animated.Value;
+  animFlip: Animated.Value; // 👈 eklendi
+  card: { id: number; name: string; image: any };
+};
+
+const CARD_BACK = require("../../assets/images/cards/1-resized.png"); // kart arkası
+
 export const CircleDeck: React.FC<Props> = ({
   howManyCountSelected,
   setIsTitleShow,
 }) => {
-  console.log("howManyCountSelected:", howManyCountSelected);
+  // console.log("howManyCountSelected:", howManyCountSelected);
   const { width, height } = Dimensions.get("window");
   const centerX = width / 2 - CARD_WIDTH / 2;
   const bottomY = height - 100;
@@ -53,6 +67,22 @@ export const CircleDeck: React.FC<Props> = ({
     [n, gridW, gridH]
   );
 
+  const [selectedCards, setSelectedCards] = useState([]);
+
+  // en üste:
+  const gridRef = useRef<View>(null);
+  const [gridOrigin, setGridOrigin] = useState({ x: 0, y: 0 });
+
+  type SlotRect = {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    cx: number;
+    cy: number;
+  };
+  const [slotRects, setSlotRects] = useState<SlotRect[]>([]);
+
   const angleBase = useRef(
     Array(deckSize)
       .fill(0)
@@ -73,6 +103,8 @@ export const CircleDeck: React.FC<Props> = ({
 
   const pan = useRef({ x: 0 }).current;
   const currentAngle = useRef(0);
+
+  const [usedIds, setUsedIds] = useState<Set<number>>(new Set());
 
   const rotateDeckByDelta = (dx: number) => {
     const angleChange = (dx / width) * Math.PI * 0.9;
@@ -187,6 +219,95 @@ export const CircleDeck: React.FC<Props> = ({
     return best;
   }
 
+  // SLOT RECT'LERİNİ STATE'E YAZ
+  useEffect(() => {
+    if (n <= 0 || cols <= 0 || itemW <= 0 || gridW <= 0 || gridH <= 0) {
+      setSlotRects([]);
+      return;
+    }
+
+    const arr: SlotRect[] = [];
+    const availW = Math.max(0, gridW - PAD * 2);
+    const rows = Math.ceil(n / cols);
+
+    for (let r = 0; r < rows; r++) {
+      const start = r * cols;
+      const count = Math.min(cols, n - start);
+      const rowWidth = count * itemW + (count - 1) * GAP;
+      const startXLocal = PAD + (availW - rowWidth) / 2;
+
+      for (let k = 0; k < count; k++) {
+        const xLocal = startXLocal + k * (itemW + GAP);
+        const yLocal = PAD + r * (itemH + GAP);
+
+        const x = gridOrigin.x + xLocal; // ekran göre top-left
+        const y = gridOrigin.y + yLocal;
+
+        arr.push({
+          x,
+          y,
+          w: itemW,
+          h: itemH,
+          cx: x + itemW / 2,
+          cy: y + itemH / 2,
+        });
+      }
+    }
+
+    setSlotRects(arr);
+    setTimeout(() => {
+      console.log("slotRects:", arr);
+    }, 1000);
+  }, [n, cols, itemW, itemH, gridW, gridH, gridOrigin.x, gridOrigin.y]);
+
+  const pickRandomCard = (pool: TarotCard[]) =>
+    pool[Math.floor(Math.random() * pool.length)];
+
+  const cardSelected = (fromX: number, fromY: number) => {
+    const slotIdx = selectedCards.length;
+    const rect = slotRects[slotIdx];
+    if (!rect) return;
+
+    const available = tarotCards.filter((c) => !usedIds.has(c.id));
+    if (available.length === 0) return;
+    const randomCard = pickRandomCard(available);
+
+    const animPos = new Animated.ValueXY({ x: fromX, y: fromY });
+    const targetScale = rect.w / CARD_WIDTH; // oranı yine slot genişliğinden alıyoruz
+    const animScale = new Animated.Value(1);
+    const animFlip = new Animated.Value(0);
+    const key = `sel-${Date.now()}-${slotIdx}`;
+
+    setSelectedCards((prev) => [
+      ...prev,
+      { key, animPos, animScale, animFlip, slotIdx, card: randomCard },
+    ]);
+    setUsedIds((prev) => new Set(prev).add(randomCard.id));
+
+    // DİKKAT: Artık merkeze gidiyoruz (yarım boy çıkarmıyoruz)
+    const toX = rect.cx;
+    const toY = rect.cy;
+
+    Animated.parallel([
+      Animated.spring(animPos, {
+        toValue: { x: toX, y: toY },
+        useNativeDriver: true,
+        speed: 12,
+        bounciness: 6,
+      }),
+      Animated.timing(animScale, {
+        toValue: targetScale,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(animFlip, {
+        toValue: 1,
+        duration: 420,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   return (
     <View
       style={{ flex: 1, backgroundColor: "#000", overflow: "hidden" }}
@@ -232,7 +353,7 @@ export const CircleDeck: React.FC<Props> = ({
             const y = bottomY + RADIUS * Math.sin(angle);
 
             if (i === 0) {
-              console.log("y:", y);
+              // console.log("y:", y);
               if (y > topArcAnglesRef.current?.startA) {
                 angleBase.push(angleBase[angleBase.length - 1] + ANGLE_DELTA);
                 // baştaki kartı çıkar
@@ -240,7 +361,7 @@ export const CircleDeck: React.FC<Props> = ({
               }
               // console.log("angleBase:", angleBase);
             } else if (i === angleBase.length - 1) {
-              console.log("last y:", y);
+              // console.log("last y:", y);
               if (y > topArcAnglesRef.current?.startA) {
                 angleBase.unshift(angleBase[0] - ANGLE_DELTA);
                 // sondaki kartı çıkar
@@ -260,7 +381,10 @@ export const CircleDeck: React.FC<Props> = ({
                   ],
                 }}
               >
-                <TouchableOpacity activeOpacity={0.8}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => cardSelected(x, y)}
+                >
                   <Image
                     source={require("../../assets/images/cards/1-resized.png")}
                     style={{
@@ -275,11 +399,17 @@ export const CircleDeck: React.FC<Props> = ({
           })}
       {isDeckSpread && (
         <View
+          ref={gridRef}
           style={{ width: "100%", height: "60%" }}
-          onLayout={(e) => {
-            const { width: W, height: H } = e.nativeEvent.layout;
-            setGridW(W);
-            setGridH(H);
+          onLayout={() => {
+            if (!gridRef.current) return;
+            requestAnimationFrame(() => {
+              gridRef.current?.measure((x, y, w, h, pageX, pageY) => {
+                setGridW(w);
+                setGridH(h);
+                setGridOrigin({ x: pageX, y: pageY });
+              });
+            });
           }}
         >
           {n > 0 &&
@@ -328,6 +458,97 @@ export const CircleDeck: React.FC<Props> = ({
             })()}
         </View>
       )}
+      {isDeckSpread &&
+        selectedCards.map((c) => {
+          const frontRotateY = c.animFlip.interpolate({
+            inputRange: [0, 0.5],
+            outputRange: ["0deg", "90deg"],
+            extrapolate: "clamp",
+          });
+          const backRotateY = c.animFlip.interpolate({
+            inputRange: [0.5, 1],
+            outputRange: ["-90deg", "0deg"],
+            extrapolate: "clamp",
+          });
+          const frontOpacity = c.animFlip.interpolate({
+            inputRange: [0, 0.49, 0.5],
+            outputRange: [1, 1, 0],
+            extrapolate: "clamp",
+          });
+          const backOpacity = c.animFlip.interpolate({
+            inputRange: [0.5, 0.51, 1],
+            outputRange: [0, 1, 1],
+            extrapolate: "clamp",
+          });
+
+          // Ölçekli yarım boy kadar geri itme
+          const halfW = Animated.multiply(c.animScale, CARD_WIDTH / 2);
+          const halfH = Animated.multiply(c.animScale, CARD_HEIGHT / 2);
+
+          return (
+            <Animated.View
+              key={c.key}
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                transform: [
+                  { translateX: c.animPos.x }, // slot merkezine gidecek
+                  { translateY: c.animPos.y },
+                ],
+              }}
+            >
+              {/* İç katman: önce scale, sonra -half translate (ölçekli kompanzasyon) */}
+              <Animated.View
+                style={{
+                  width: CARD_WIDTH,
+                  height: CARD_HEIGHT,
+                  transform: [
+                    { scale: c.animScale },
+                    { translateX: Animated.multiply(halfW, -1) },
+                    { translateY: Animated.multiply(halfH, -1) },
+                  ],
+                }}
+              >
+                {/* FRONT */}
+                <Animated.View
+                  style={{
+                    position: "absolute",
+                    width: CARD_WIDTH,
+                    height: CARD_HEIGHT,
+                    backfaceVisibility: "hidden",
+                    transform: [
+                      { perspective: 800 },
+                      { rotateY: frontRotateY },
+                    ],
+                    opacity: frontOpacity,
+                  }}
+                >
+                  <Image
+                    source={c.card.image}
+                    style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
+                  />
+                </Animated.View>
+
+                {/* BACK */}
+                <Animated.View
+                  style={{
+                    position: "absolute",
+                    width: CARD_WIDTH,
+                    height: CARD_HEIGHT,
+                    backfaceVisibility: "hidden",
+                    transform: [{ perspective: 800 }, { rotateY: backRotateY }],
+                    opacity: backOpacity,
+                  }}
+                >
+                  <Image
+                    source={CARD_BACK}
+                    style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
+                  />
+                </Animated.View>
+              </Animated.View>
+            </Animated.View>
+          );
+        })}
     </View>
   );
 };

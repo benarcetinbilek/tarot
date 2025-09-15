@@ -83,6 +83,7 @@ const ShuffleCard = () => {
           <ShuffleCards
             setIsShuffling={setIsShuffling}
             setIsCircleDeck={setIsCircleDeck}
+            setIsTitleShow={setIsTitleShow}
           />
         )}
 

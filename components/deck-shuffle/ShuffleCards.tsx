@@ -12,6 +12,7 @@ import {
 type Props = {
   setIsShuffling: React.Dispatch<React.SetStateAction<boolean>>;
   setIsCircleDeck: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsTitleShow: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 const CARD_COUNT = 20;
@@ -22,6 +23,7 @@ const MARGIN = 10;
 export const ShuffleCards: React.FC<Props> = ({
   setIsShuffling,
   setIsCircleDeck,
+  setIsTitleShow,
 }) => {
   const [isDoneButton, setIsDoneButton] = useState(false);
   // const [isDeckShuffling, setIsDeckShuffling] = useState(false);
@@ -143,7 +145,9 @@ export const ShuffleCards: React.FC<Props> = ({
         toValue: { x: centerX, y: bottomY },
         duration: 400,
         useNativeDriver: true,
-      }).start();
+      }).start(() => {
+        setIsTitleShow(false);
+      });
     });
   };
 

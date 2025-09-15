@@ -16,6 +16,7 @@ const CARD_WIDTH = 85;
 const CARD_HEIGHT = 150;
 const START_ANGLE = -Math.PI / 2; // sol orta
 
+const SLOT_MIN_W = 85; // min placeholder genişliği
 const SLOT_AR = CARD_HEIGHT / CARD_WIDTH; // en-boy oranı (CARD_HEIGHT / CARD_WIDTH)
 const PAD = 16; // container yatay padding
 const GAP = 8;
@@ -41,6 +42,7 @@ export const CircleDeck: React.FC<Props> = ({
   howManyCountSelected,
   setIsTitleShow,
 }) => {
+  // console.log("howManyCountSelected:", howManyCountSelected);
   const { width, height } = Dimensions.get("window");
   const centerX = width / 2 - CARD_WIDTH / 2;
   const bottomY = height - 100;
@@ -58,6 +60,7 @@ export const CircleDeck: React.FC<Props> = ({
   const [gridH, setGridH] = useState(0);
 
   const n = Number(howManyCountSelected) || 0; // ikisinden hangisi varsa
+  // console.log("nnn:", n);
   const { cols, itemW, itemH } = React.useMemo(
     () => computeGrid(n, gridW, gridH),
     [n, gridW, gridH]
@@ -65,7 +68,18 @@ export const CircleDeck: React.FC<Props> = ({
 
   const [selectedCards, setSelectedCards] = useState([]);
 
+  // en üste:
   const gridRef = useRef<View>(null);
+
+  // type SlotRect = {
+  //   i: number; // 0..n-1
+  //   row: number; // satır index
+  //   col: number; // satır içi index
+  //   x: number; // absolute X (ekran)
+  //   y: number; // absolute Y (ekran)
+  //   w: number;
+  //   h: number;
+  // };
 
   const angleBase = useRef(
     Array(deckSize)
@@ -84,12 +98,43 @@ export const CircleDeck: React.FC<Props> = ({
       .fill(0)
       .map(() => new Animated.ValueXY({ x: centerX, y: bottomY }))
   ).current;
-  // console.log("positionValues:", positionValues);
 
+  const [slotRects, setSlotRects] = useState<
+    { x: number; y: number; w: number; h: number }[]
+  >([]);
   const slotRefs = useRef<(View | null)[]>([]);
+  // useEffect(() => {
+  //   if (!isDeckSpread) return;
+
+  //   requestAnimationFrame(() => {
+  //     const rects: { x: number; y: number; w: number; h: number }[] = [];
+  //     let measured = 0;
+
+  //     slotRefs.current.forEach((slot, idx) => {
+  //       if (!slot) return;
+
+  //       // 🔴 EKRANA GÖRE + MERKEZ
+  //       slot.measureInWindow((winX, winY, w, h) => {
+  //         rects[idx] = {
+  //           x: winX, // merkez X (window)
+  //           y: winY, // merkez Y (window)
+  //           w,
+  //           h,
+  //         };
+  //         measured++;
+  //         if (measured === slotRefs.current.length) {
+  //           setSlotRects(rects);
+  //         }
+  //       });
+  //     });
+  //   });
+  // }, [isDeckSpread, n, itemW, itemH]);
 
   const pan = useRef({ x: 0 }).current;
   const currentAngle = useRef(0);
+  // useEffect(() => {
+  //   console.log("slotRects updated:", slotRects);
+  // }, [slotRects]);
 
   const [usedIds, setUsedIds] = useState<Set<number>>(new Set());
 
@@ -170,7 +215,7 @@ export const CircleDeck: React.FC<Props> = ({
 
     Animated.stagger(50, spreadAnimations).start(() => {
       setIsDeckSpread(true);
-      // setIsTitleShow(false);
+      setIsTitleShow(false);
     });
   };
 
@@ -220,7 +265,7 @@ export const CircleDeck: React.FC<Props> = ({
     const available = tarotCards.filter((c) => !usedIds.has(c.id));
     if (available.length === 0) return;
     const randomCard = pickRandomCard(available);
-    // console.log("randomcard", randomCard);
+    console.log("randomcard", randomCard);
 
     setSelectedCards([...selectedCards, randomCard]);
     const flip = new Animated.Value(0); // 0 = arka, 1 = ön
@@ -239,6 +284,10 @@ export const CircleDeck: React.FC<Props> = ({
     }).start();
   };
 
+  useEffect(() => {
+    console.log("selectedcardstate", selectedCards);
+  }, [selectedCards]);
+
   return (
     <View
       style={{ flex: 1, backgroundColor: "#000", overflow: "hidden" }}
@@ -248,6 +297,12 @@ export const CircleDeck: React.FC<Props> = ({
       {/*cards animation */}
       {!isDeckSpread
         ? angleBase.map((baseAngle, i) => {
+            const angle = baseAngle + angleVal;
+
+            // Yayılma bitene kadar kartlar altta kalacak
+            const x = spreadDone ? centerX + RADIUS * Math.cos(angle) : centerX;
+            const y = spreadDone ? bottomY + RADIUS * Math.sin(angle) : bottomY;
+
             return (
               <Animated.View
                 key={i}
@@ -277,16 +332,20 @@ export const CircleDeck: React.FC<Props> = ({
             const angle = baseAngle + angleVal;
             const x = centerX + RADIUS * Math.cos(angle);
             const y = bottomY + RADIUS * Math.sin(angle);
-            // console.log("angle:", angle, "x:", x, "y:", y);
 
             if (i === 0) {
+              // console.log("y:", y);
               if (y > topArcAnglesRef.current?.startA) {
                 angleBase.push(angleBase[angleBase.length - 1] + ANGLE_DELTA);
+                // baştaki kartı çıkar
                 angleBase.shift();
               }
+              // console.log("angleBase:", angleBase);
             } else if (i === angleBase.length - 1) {
+              // console.log("last y:", y);
               if (y > topArcAnglesRef.current?.startA) {
                 angleBase.unshift(angleBase[0] - ANGLE_DELTA);
+                // sondaki kartı çıkar
                 angleBase.pop();
               }
             }
@@ -330,6 +389,7 @@ export const CircleDeck: React.FC<Props> = ({
               gridRef.current?.measure((x, y, w, h, pageX, pageY) => {
                 setGridW(w);
                 setGridH(h);
+                // setGridOrigin({ x: pageX, y: pageY });
               });
             });
           }}
